@@ -154,6 +154,11 @@ def process_directory(
                 return "skipped"
 
             success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+            if success:
+                # Log time delta for successful match
+                delta = abs((point.local_time - image_dt).total_seconds())
+                delta_minutes = delta / 60
+                logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
             return "tagged" if success else "failed"
 
         results = []
@@ -187,6 +192,10 @@ def process_directory(
 
             success = write_location(file_path, point, backup=backup, dry_run=dry_run)
             if success:
+                # Log time delta for successful match
+                delta = abs((point.local_time - image_dt).total_seconds())
+                delta_minutes = delta / 60
+                logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
                 tagged += 1
             else:
                 failed += 1
