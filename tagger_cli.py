@@ -143,10 +143,11 @@ def process_directory(
 
             success = write_location(file_path, point, backup=backup, dry_run=dry_run)
             if success:
-                # Log time delta for successful match
-                delta = abs((point.local_time - image_dt).total_seconds())
-                delta_minutes = delta / 60
-                logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
+                # Log time delta for successful match (positive = photo after GPS point, negative = before)
+                delta_seconds = (point.local_time - image_dt).total_seconds()
+                delta_minutes = delta_seconds / 60
+                sign = "+" if delta_seconds >= 0 else ""
+                logger.debug(f"  Time delta: {sign}{delta_minutes:.1f} min ({sign}{int(delta_seconds)} sec)")
             return "tagged" if success else "failed"
 
         results = []
@@ -186,10 +187,11 @@ def process_directory(
 
                 success = write_location(file_path, point, backup=backup, dry_run=dry_run)
                 if success:
-                    # Log time delta for successful match
-                    delta = abs((point.local_time - image_dt).total_seconds())
-                    delta_minutes = delta / 60
-                    logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
+                    # Log time delta for successful match (positive = photo after GPS point, negative = before)
+                    delta_seconds = (point.local_time - image_dt).total_seconds()
+                    delta_minutes = delta_seconds / 60
+                    sign = "+" if delta_seconds >= 0 else ""
+                    logger.debug(f"  Time delta: {sign}{delta_minutes:.1f} min ({sign}{int(delta_seconds)} sec)")
                     tagged += 1
                 else:
                     failed += 1
