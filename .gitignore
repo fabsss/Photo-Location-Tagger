@@ -130,3 +130,6 @@ SLR Fotos
 *.bak
 *_original.*
 *.log
+
+# Log files
+*.log.*

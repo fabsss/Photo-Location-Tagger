@@ -7,10 +7,11 @@ A Python CLI tool to geotag photos and videos using Google Location History time
 - Smart timezone handling without timezone guessing
 - Multiple timeline format support (semanticSegments, legacy, timelineObjects)
 - **Comprehensive format support**: JPG, PNG, TIFF, WebP, RAW files from all major camera brands, and videos
-- O(log n) binary search matching for fast processing
+- Backup mode keeps original files
 - Dry-run mode to preview changes before committing
-- Detailed logging (INFO and DEBUG)
 - Interactive mode for easy configuration
+- Detailed logging (INFO and DEBUG)
+
 
 ## Installation
 
@@ -19,7 +20,7 @@ A Python CLI tool to geotag photos and videos using Google Location History time
 - exiftool (system command)
 
 ### Install exiftool
-- Windows: choco install exiftool
+- Windows: winget install exiftool
 - macOS: brew install exiftool
 - Linux: sudo apt-get install libimage-exiftool-perl
 
