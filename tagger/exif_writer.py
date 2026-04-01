@@ -103,7 +103,14 @@ def read_datetime_batch(
     # Process each chunk
     for chunk in final_chunks:
         try:
-            cmd = ["exiftool", "-json", "-DateTimeOriginal", "-CreateDate", "-f"]
+            # Read both EXIF (for images) and QuickTime (for videos) date tags
+            # exiftool will return "-" for tags that don't exist in the file
+            cmd = [
+                "exiftool", "-json",
+                "-DateTimeOriginal", "-CreateDate",  # EXIF tags for images
+                "-QuickTime:CreateDate", "-QuickTime:MediaCreateDate",  # QuickTime tags for videos
+                "-f"
+            ]
             cmd.extend(str(fp) for fp in chunk)
 
             result = subprocess.run(
@@ -144,8 +151,14 @@ def read_datetime_batch(
 
                     source_path = Path(source_file)
 
-                    # Try DateTimeOriginal first, then CreateDate
-                    datetime_str = entry.get("DateTimeOriginal") or entry.get("CreateDate")
+                    # Try EXIF tags first (for images), then QuickTime tags (for videos)
+                    # Note: exiftool returns "-" for missing tags, so we must check for it
+                    datetime_str = None
+                    for tag in ["DateTimeOriginal", "CreateDate", "QuickTime:CreateDate", "QuickTime:MediaCreateDate"]:
+                        val = entry.get(tag)
+                        if val and val != "-":
+                            datetime_str = val
+                            break
 
                     if not datetime_str:
                         result_map[source_path] = None
@@ -176,9 +189,10 @@ def read_datetime_batch(
 
 
 def read_datetime(file_path: str | Path) -> datetime | None:
-    """Read image/video creation timestamp from EXIF metadata.
+    """Read image/video creation timestamp from metadata.
 
-    Tries DateTimeOriginal (images) first, then CreateDate (videos).
+    For images (JPG, PNG, etc): reads EXIF DateTimeOriginal, then CreateDate
+    For videos (MP4, MOV): reads QuickTime tags CreateDate, MediaCreateDate
     Format is "YYYY:MM:DD HH:MM:SS" (naive datetime, assumes local time).
 
     Args:
@@ -196,10 +210,26 @@ def read_datetime(file_path: str | Path) -> datetime | None:
         return None
 
     try:
+        # Determine which tags to read based on file type
+        is_video = file_path.suffix.lower() in [".mp4", ".mov", ".m4v"]
+
+        if is_video:
+            # For videos: read QuickTime tags (CreateDate, MediaCreateDate, etc.)
+            # These tags are in QuickTime format, not EXIF
+            tags_to_read = [
+                "-QuickTime:CreateDate",
+                "-QuickTime:MediaCreateDate",
+                "-CreateDate",  # Fallback to any CreateDate
+            ]
+        else:
+            # For images: read EXIF tags
+            tags_to_read = ["-DateTimeOriginal", "-CreateDate"]
+
         # exiftool -s3 outputs tag values only (no field names)
         # exiftool -f outputs data in the same format exiftool uses
+        cmd = ["exiftool"] + tags_to_read + ["-s3", "-f", str(file_path)]
         result = subprocess.run(
-            ["exiftool", "-DateTimeOriginal", "-CreateDate", "-s3", "-f", str(file_path)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10,
@@ -221,7 +251,8 @@ def read_datetime(file_path: str | Path) -> datetime | None:
                     logger.debug(f"Could not parse datetime: {line}")
                     continue
 
-        logger.warning(f"No DateTimeOriginal or CreateDate found in {file_path.name}")
+        tag_type = "QuickTime" if is_video else "EXIF"
+        logger.warning(f"No {tag_type} timestamp found in {file_path.name}")
         return None
 
     except subprocess.TimeoutExpired:
