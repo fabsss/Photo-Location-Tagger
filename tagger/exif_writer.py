@@ -296,7 +296,7 @@ def write_location(
         return False
 
     # Build exiftool command
-    cmd = ["exiftool"]
+    cmd = ["exiftool", "-api", "ignoreMinorErrors=1"]
 
     # GPS coordinates
     lat_ref = "N" if point.lat >= 0 else "S"
