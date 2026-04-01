@@ -37,11 +37,41 @@ def setup_logging(log_file: Path | None = None, verbose: bool = False):
         console_handler.setFormatter(
             logging.Formatter("%(message)s")
         )  # Simplify console format when file logging
+        # Log where the output is being written
+        root_logger.info(f"Logging to: {log_file}")
 
     return root_logger
 
 
 logger = logging.getLogger(__name__)
+
+
+def get_unique_log_path(log_file: Path) -> Path:
+    """Get a unique log file path by appending counter if file exists.
+
+    If log_file already exists, returns log_file.1, log_file.2, etc.
+
+    Args:
+        log_file: Desired log file path
+
+    Returns:
+        Unique log file path that doesn't exist yet
+
+    Example:
+        get_unique_log_path(Path("tagger.log"))
+        # Returns Path("tagger.log") if it doesn't exist
+        # Returns Path("tagger.log.1") if tagger.log exists
+        # Returns Path("tagger.log.2") if tagger.log and tagger.log.1 exist
+    """
+    if not log_file.exists():
+        return log_file
+
+    counter = 1
+    while True:
+        unique_path = Path(f"{log_file}.{counter}")
+        if not unique_path.exists():
+            return unique_path
+        counter += 1
 
 
 def process_directory(
@@ -399,7 +429,9 @@ Examples:
             print("\nCancelled by user")
             return 1
 
-    # Setup logging
+    # Setup logging with unique filename if log file already exists
+    if args.log_file:
+        args.log_file = get_unique_log_path(args.log_file)
     setup_logging(log_file=args.log_file, verbose=args.verbose)
 
     try:

@@ -186,6 +186,32 @@ All formats are processed by default. Use `--extensions` to customize.
 - Reduces CPU/I/O overhead regardless of worker count
 - Per-file error isolation (one malformed file doesn't fail the batch)
 
+### Log File Management
+
+When using `--log-file`, the tool automatically creates unique filenames if the file already exists:
+
+- **First run**: `tagger.log`
+- **Second run**: `tagger.log.1`
+- **Third run**: `tagger.log.2`
+- And so on...
+
+This ensures you never lose log history. Each run gets its own log file, making it easy to:
+- Compare results across multiple runs
+- Debug issues from different processing attempts
+- Keep a complete audit trail without manual renaming
+
+Example:
+```bash
+# First run creates tagger.log
+python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger.log
+
+# Second run creates tagger.log.1 (tagger.log is preserved)
+python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger.log
+
+# Third run creates tagger.log.2
+python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger.log
+```
+
 ## How It Works
 
 Compares naive local times directly - no timezone guessing required.
