@@ -92,8 +92,17 @@ def load_timeline(timeline_path: str | Path) -> list[GPSPoint]:
 def _parse_semantic_segments(data: dict) -> list[GPSPoint]:
     """Parse modern semanticSegments format."""
     points = []
+    last_known_offset_minutes = None  # Track timezone from previous segments
+
     for segment in data.get("semanticSegments", []):
         segment_offset_minutes = segment.get("startTimeTimezoneUtcOffsetMinutes")
+
+        # If this segment doesn't have timezone, use the last known one
+        # (Google's export is inconsistent - some segments have it, others don't)
+        if segment_offset_minutes is None and last_known_offset_minutes is not None:
+            segment_offset_minutes = last_known_offset_minutes
+        elif segment_offset_minutes is not None:
+            last_known_offset_minutes = segment_offset_minutes
 
         for path_point in segment.get("timelinePath", []):
             try:
@@ -117,12 +126,14 @@ def _parse_semantic_segments(data: dict) -> list[GPSPoint]:
                 else:
                     utc_dt = utc_dt.astimezone(timezone.utc)
 
-                # Apply correct timezone offset if available
+                # Apply correct timezone offset
+                # ALWAYS use segment_offset_minutes if available (it's more reliable than embedded timezone)
                 if segment_offset_minutes is not None:
                     local_dt = apply_timezone_offset(utc_dt, segment_offset_minutes)
                     tz_offset_str = _format_offset_string(segment_offset_minutes)
+                    tz_offset_minutes = segment_offset_minutes
                 else:
-                    # Fall back to offset from the time string itself
+                    # Fall back to offset from the time string itself only if segment offset missing
                     local_dt = dateutil_parser.isoparse(time_str)
                     if local_dt.tzinfo is not None:
                         tz_offset_minutes = int(local_dt.utcoffset().total_seconds() // 60)

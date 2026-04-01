@@ -110,8 +110,14 @@ def process_directory(
     return tagged, skipped, failed
 
 
-def prompt_for_path(prompt_text: str, must_exist: bool = True) -> Path:
-    """Interactively prompt user for a file or directory path."""
+def prompt_for_path(prompt_text: str, must_exist: bool = True, path_type: str = "any") -> Path:
+    """Interactively prompt user for a file or directory path.
+
+    Args:
+        prompt_text: Text to display in the prompt
+        must_exist: Whether the path must exist
+        path_type: "file", "directory", or "any"
+    """
     while True:
         path_str = input(f"{prompt_text}: ").strip()
         if not path_str:
@@ -119,9 +125,22 @@ def prompt_for_path(prompt_text: str, must_exist: bool = True) -> Path:
             continue
 
         path = Path(path_str).expanduser()
+
         if must_exist and not path.exists():
             print(f"Error: Path does not exist: {path}")
             continue
+
+        # Validate path type
+        if path_type == "file":
+            if path.exists() and path.is_dir():
+                print(f"Error: '{path_str}' is a directory, not a file.")
+                print(f"  Please enter a file path (e.g., 'timeline.json')")
+                continue
+        elif path_type == "directory":
+            if path.exists() and path.is_file():
+                print(f"Error: '{path_str}' is a file, not a directory.")
+                print(f"  Please enter a folder path (e.g., './photos' or '.')")
+                continue
 
         return path
 
@@ -136,7 +155,7 @@ def prompt_for_interactive_mode() -> dict:
     print("Step 1: Locate your Google Timeline file")
     print("  Export Location History from Google Maps on your device")
     print("  (See README for detailed instructions)\n")
-    timeline = prompt_for_path("Enter path to timeline.json", must_exist=True)
+    timeline = prompt_for_path("Enter path to timeline.json", must_exist=True, path_type="file")
 
     # Input file/folder
     print("\nStep 2: Select photos/videos to geotag")
@@ -183,8 +202,29 @@ def prompt_for_interactive_mode() -> dict:
     backup = input("Keep backup files? (y/n, default: n): ").strip().lower() == "y"
     dry_run = input("Dry run (preview only, no changes)? (y/n, default: n): ").strip().lower() == "y"
 
-    log_file_str = input("Save detailed log to file? (enter path or press Enter to skip): ").strip()
-    log_file = Path(log_file_str) if log_file_str else None
+    # Log file with validation
+    log_file = None
+    while True:
+        log_file_str = input("Save detailed log to file? (e.g., tagger.log or ./logs/tagger.log, or press Enter to skip): ").strip()
+        if not log_file_str:
+            # User skipped
+            break
+
+        log_path = Path(log_file_str).expanduser()
+
+        # Check if it's a directory
+        if log_path.is_dir():
+            print(f"Error: '{log_file_str}' is a directory. Please provide a filename instead.")
+            print("  Example filenames: 'tagger.log', './logs/tagger.log', 'C:\\Users\\YourName\\tagger.log'")
+            continue
+
+        # Check if parent directory exists
+        if not log_path.parent.exists():
+            print(f"Error: Directory does not exist: {log_path.parent}")
+            continue
+
+        log_file = log_path
+        break
 
     verbose = input("Enable verbose logging? (y/n, default: n): ").strip().lower() == "y"
 
