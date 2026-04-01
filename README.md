@@ -162,6 +162,7 @@ All formats are processed by default. Use `--extensions` to customize.
 - --timeline FILE: Google Timeline JSON file (optional if running interactively)
 - --input PATH: File or folder to process (optional if running interactively)
 - --time-margin N: Max time difference in minutes (default: 30)
+- --timeout N: exiftool subprocess timeout in seconds (default: 60). Increase for large video files.
 - --dry-run: Show what would be tagged without writing
 - --log-file FILE: Write detailed log to file
 - --backup: Keep _original backup files
@@ -169,6 +170,20 @@ All formats are processed by default. Use `--extensions` to customize.
 - --extensions EXT: Comma-separated extensions (default: all supported formats listed above)
 - --workers N: Number of parallel workers for processing (default: 4). Use 1 for sequential processing (equivalent to original behavior)
 - -v, --verbose: Enable DEBUG level logging
+
+### Timeout Settings
+
+If you encounter "exiftool timed out" errors with large files, increase the timeout:
+
+```bash
+# For large 4K videos (increase to 120-180 seconds)
+python tagger_cli.py --timeline timeline.json --input ./videos --timeout 180
+
+# For very large or slow storage (increase to 300+ seconds)
+python tagger_cli.py --timeline timeline.json --input ./videos --timeout 300
+```
+
+Timeout applies to **each file write operation** independently, not the entire batch. Default is 60 seconds, which works for most files.
 
 ### Performance Notes
 
@@ -347,18 +362,21 @@ See log output with --log-file for detailed debugging.
 
 ## Graceful Shutdown
 
-Press **Ctrl+C** once to stop processing:
-- The tool will complete the current file being processed
+Press **Ctrl+C** once to stop processing cleanly:
+- The tool waits for currently running exiftool processes to finish
+- No files are interrupted mid-write (prevents corruption)
 - Partial results are reported before exit
-- No Python errors or stack traces
+- No Python errors, exiftool interruptions, or stack traces
 - Works with both parallel and sequential processing
 
 ```bash
 # Example: Press Ctrl+C during processing
 ^C
-[WARNING] Shutdown requested. Waiting for current operations to complete...
-SUMMARY: 47 tagged, 12 skipped, 3 failed
+[WARNING] Processing interrupted by user. Waiting for running tasks to complete...
+SUMMARY: 47 tagged, 12 skipped, 0 failed
 ```
+
+Even with large files and parallel processing, a single Ctrl+C will gracefully shutdown after completing currently running operations.
 
 ## Troubleshooting
 
