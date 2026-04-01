@@ -295,6 +295,15 @@ def write_location(
         logger.error(f"File not found: {file_path}")
         return False
 
+    # Clean up stale exiftool temporary files that may block writes
+    temp_file = Path(str(file_path) + "_exiftool_tmp")
+    if temp_file.exists():
+        try:
+            temp_file.unlink()
+            logger.debug(f"Cleaned up stale temp file: {temp_file.name}")
+        except Exception as e:
+            logger.warning(f"Could not remove temp file {temp_file.name}: {e}")
+
     # Build exiftool command
     cmd = ["exiftool", "-api", "ignoreMinorErrors=1"]
 
