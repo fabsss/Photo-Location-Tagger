@@ -341,14 +341,8 @@ def write_location(
             )
             return True
         else:
-            # Check if error is only a minor warning (e.g., maker notes parsing)
-            # exiftool still writes the metadata even with minor warnings
-            if "[minor]" in result.stderr:
-                logger.warning(f"⚠ {file_path.name}: {point.lat:.4f}, {point.lon:.4f} ({point.tz_offset_str}) — {result.stderr.strip()}")
-                return True
-            else:
-                logger.error(f"exiftool write failed for {file_path.name}: {result.stderr}")
-                return False
+            logger.error(f"exiftool write failed for {file_path.name}: {result.stderr}")
+            return False
 
     except subprocess.TimeoutExpired:
         logger.error(f"exiftool timed out writing {file_path.name}")
