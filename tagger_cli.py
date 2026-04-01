@@ -3,7 +3,6 @@
 
 import argparse
 import logging
-import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -11,17 +10,6 @@ from pathlib import Path
 from tagger.timeline_parser import load_timeline, TimelineParseError
 from tagger.location_finder import find_closest
 from tagger.exif_writer import check_exiftool, read_datetime, read_datetime_batch, write_location, ExifToolNotFoundError
-
-
-# Global flag for graceful shutdown
-_shutdown_requested = False
-
-
-def _handle_interrupt(signum, frame):
-    """Handle Ctrl+C (SIGINT) gracefully."""
-    global _shutdown_requested
-    _shutdown_requested = True
-    logger.warning("\nShutdown requested. Waiting for current operations to complete...")
 
 
 logger = logging.getLogger(__name__)
@@ -165,11 +153,16 @@ def process_directory(
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {pool.submit(_process_one, fp): fp for fp in files_to_process_sorted}
-                for future in as_completed(futures):
-                    results.append(future.result())
+                try:
+                    for future in as_completed(futures):
+                        results.append(future.result())
+                except KeyboardInterrupt:
+                    logger.warning("Processing interrupted by user. Cancelling pending tasks...")
+                    pool.shutdown(wait=False)
+                    raise  # Re-raise to exit main loop
         except KeyboardInterrupt:
-            logger.warning("Processing interrupted by user")
-            pool.shutdown(wait=False)
+            # Count partial results before exiting
+            pass
 
         tagged = results.count("tagged")
         skipped = results.count("skipped")
@@ -177,28 +170,32 @@ def process_directory(
 
     else:
         # Sequential execution (identical to original behavior)
-        for file_path in files_to_process_sorted:
-            image_dt = datetime_map.get(file_path)
-            if image_dt is None:
-                logger.warning(f"{file_path.name}: No readable timestamp found")
-                skipped += 1
-                continue
+        try:
+            for file_path in files_to_process_sorted:
+                image_dt = datetime_map.get(file_path)
+                if image_dt is None:
+                    logger.warning(f"{file_path.name}: No readable timestamp found")
+                    skipped += 1
+                    continue
 
-            point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
-            if point is None:
-                logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
-                skipped += 1
-                continue
+                point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
+                if point is None:
+                    logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
+                    skipped += 1
+                    continue
 
-            success = write_location(file_path, point, backup=backup, dry_run=dry_run)
-            if success:
-                # Log time delta for successful match
-                delta = abs((point.local_time - image_dt).total_seconds())
-                delta_minutes = delta / 60
-                logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
-                tagged += 1
-            else:
-                failed += 1
+                success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+                if success:
+                    # Log time delta for successful match
+                    delta = abs((point.local_time - image_dt).total_seconds())
+                    delta_minutes = delta / 60
+                    logger.debug(f"  Time delta: {delta_minutes:.1f} min ({int(delta)} sec)")
+                    tagged += 1
+                else:
+                    failed += 1
+        except KeyboardInterrupt:
+            logger.warning("Processing interrupted by user")
+            raise  # Re-raise to exit main loop
 
     return tagged, skipped, failed
 
@@ -354,9 +351,6 @@ def prompt_for_interactive_mode() -> dict:
 
 def main():
     """Main CLI entry point."""
-    # Register signal handler for graceful shutdown on Ctrl+C
-    signal.signal(signal.SIGINT, _handle_interrupt)
-
     parser = argparse.ArgumentParser(
         description="Geotag photos and videos using Google Location History (timeline.json)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
