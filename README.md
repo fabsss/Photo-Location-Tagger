@@ -313,6 +313,21 @@ Gracefully handles: missing files, malformed JSON, missing timestamps, no GPS ma
 
 See log output with --log-file for detailed debugging.
 
+## Graceful Shutdown
+
+Press **Ctrl+C** once to stop processing:
+- The tool will complete the current file being processed
+- Partial results are reported before exit
+- No Python errors or stack traces
+- Works with both parallel and sequential processing
+
+```bash
+# Example: Press Ctrl+C during processing
+^C
+[WARNING] Shutdown requested. Waiting for current operations to complete...
+SUMMARY: 47 tagged, 12 skipped, 3 failed
+```
+
 ## Troubleshooting
 
 ### "exiftool timed out writing" on large video files
