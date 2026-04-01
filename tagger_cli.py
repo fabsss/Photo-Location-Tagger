@@ -84,6 +84,7 @@ def process_directory(
     recursive: bool,
     extensions: list[str],
     workers: int = 4,
+    timeout: int = 60,
 ) -> tuple[int, int, int]:
     """Process all matching files in a directory.
 
@@ -141,7 +142,7 @@ def process_directory(
                 # find_closest already logs the detailed message with actual time delta
                 return "skipped"
 
-            success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+            success = write_location(file_path, point, backup=backup, dry_run=dry_run, timeout=timeout)
             if success:
                 # Log time delta for successful match (positive = photo after GPS point, negative = before)
                 delta_seconds = (point.local_time - image_dt).total_seconds()
@@ -158,8 +159,8 @@ def process_directory(
                     for future in as_completed(futures):
                         results.append(future.result())
                 except KeyboardInterrupt:
-                    logger.warning("Processing interrupted by user. Cancelling pending tasks...")
-                    pool.shutdown(wait=False)
+                    logger.warning("Processing interrupted by user. Waiting for running tasks to complete...")
+                    pool.shutdown(wait=True)  # Wait for running tasks to finish
                     raise  # Re-raise to exit main loop
         except KeyboardInterrupt:
             # Count partial results before exiting
@@ -185,7 +186,7 @@ def process_directory(
                     skipped += 1
                     continue
 
-                success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+                success = write_location(file_path, point, backup=backup, dry_run=dry_run, timeout=timeout)
                 if success:
                     # Log time delta for successful match (positive = photo after GPS point, negative = before)
                     delta_seconds = (point.local_time - image_dt).total_seconds()
@@ -431,6 +432,12 @@ Examples:
         default=4,
         help="Number of parallel workers for processing (default: 4). Use 1 for sequential processing.",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=60,
+        help="exiftool subprocess timeout in seconds (default: 60). Increase for very large video files.",
+    )
 
     args = parser.parse_args()
 
@@ -504,6 +511,7 @@ Examples:
                 recursive=args.recursive,
                 extensions=extensions,
                 workers=args.workers,
+                timeout=args.timeout,
             )
 
             logger.info("=" * 60)

@@ -268,6 +268,7 @@ def write_location(
     point: GPSPoint,
     backup: bool = False,
     dry_run: bool = False,
+    timeout: int = 60,
 ) -> bool:
     """Write GPS coordinates and timezone offset to image/video EXIF metadata.
 
@@ -372,7 +373,7 @@ def write_location(
             cmd,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=timeout,
         )
 
         if result.returncode == 0:
