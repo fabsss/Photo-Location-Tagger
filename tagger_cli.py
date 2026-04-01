@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -10,6 +11,20 @@ from pathlib import Path
 from tagger.timeline_parser import load_timeline, TimelineParseError
 from tagger.location_finder import find_closest
 from tagger.exif_writer import check_exiftool, read_datetime, read_datetime_batch, write_location, ExifToolNotFoundError
+
+
+# Global flag for graceful shutdown
+_shutdown_requested = False
+
+
+def _handle_interrupt(signum, frame):
+    """Handle Ctrl+C (SIGINT) gracefully."""
+    global _shutdown_requested
+    _shutdown_requested = True
+    logger.warning("\nShutdown requested. Waiting for current operations to complete...")
+
+
+logger = logging.getLogger(__name__)
 
 
 # Setup logging
@@ -42,8 +57,6 @@ def setup_logging(log_file: Path | None = None, verbose: bool = False):
 
     return root_logger
 
-
-logger = logging.getLogger(__name__)
 
 
 def get_unique_log_path(log_file: Path) -> Path:
@@ -144,10 +157,14 @@ def process_directory(
             return "tagged" if success else "failed"
 
         results = []
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_process_one, fp): fp for fp in files_to_process_sorted}
-            for future in as_completed(futures):
-                results.append(future.result())
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_process_one, fp): fp for fp in files_to_process_sorted}
+                for future in as_completed(futures):
+                    results.append(future.result())
+        except KeyboardInterrupt:
+            logger.warning("Processing interrupted by user")
+            pool.shutdown(wait=False)
 
         tagged = results.count("tagged")
         skipped = results.count("skipped")
@@ -328,6 +345,9 @@ def prompt_for_interactive_mode() -> dict:
 
 def main():
     """Main CLI entry point."""
+    # Register signal handler for graceful shutdown on Ctrl+C
+    signal.signal(signal.SIGINT, _handle_interrupt)
+
     parser = argparse.ArgumentParser(
         description="Geotag photos and videos using Google Location History (timeline.json)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
