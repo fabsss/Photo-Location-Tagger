@@ -197,15 +197,20 @@ python tagger_cli.py --timeline timeline.json --input ./photos --verbose --log-f
 
 In the log file, you'll see lines like:
 ```
-[DEBUG] Time delta: 0.1 min (6 sec)     ← Very close match
-[DEBUG] Time delta: 2.9 min (174 sec)   ← Good match
-[DEBUG] Time delta: 10.2 min (610 sec)  ← Farther but within margin
+[DEBUG] Time delta: +0.1 min (+6 sec)      ← Photo 6 sec BEFORE GPS point
+[DEBUG] Time delta: +2.9 min (+174 sec)    ← Photo 2.9 min before GPS point
+[DEBUG] Time delta: -10.2 min (-610 sec)   ← Photo 10.2 min AFTER GPS point
 ```
 
+**Understanding the sign (+ or -):**
+- **POSITIVE** (+): Photo was taken **before** the GPS point was logged
+- **NEGATIVE** (-): Photo was taken **after** the GPS point was logged
+
 **What to look for:**
-- **< 1 min**: Excellent match, photo taken while device was logging
-- **1-5 min**: Good match, typical GPS update intervals
-- **5-30 min**: Acceptable if within your `--time-margin`, but check if timezone or clock is off
+- **Close to 0** (±0-30 sec): Excellent match, device clocks well synchronized
+- **±1-5 min**: Good match, typical GPS update intervals
+- **±5-30 min**: Acceptable if within your `--time-margin`, but check if timezone or clock is off
+- **Consistent pattern** (all +/all -): Device camera clock running consistently fast or slow
 - **> time margin**: Files skipped, no match found
 
 Use this to:
