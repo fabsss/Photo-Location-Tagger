@@ -4,7 +4,7 @@
 import argparse
 import logging
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 
 from tagger.timeline_parser import load_timeline, TimelineParseError
@@ -159,8 +159,10 @@ def process_directory(
                     for future in as_completed(futures):
                         results.append(future.result())
                 except KeyboardInterrupt:
-                    logger.warning("Processing interrupted by user. Waiting for running tasks to complete...")
-                    pool.shutdown(wait=True)  # Wait for running tasks to finish
+                    logger.warning(f"Processing interrupted by user. Giving running tasks {timeout}s to complete...")
+                    # Wait for running tasks with timeout (don't hang forever)
+                    wait(futures.keys(), timeout=timeout)
+                    pool.shutdown(wait=False)  # Shutdown without waiting again
                     raise  # Re-raise to exit main loop
         except KeyboardInterrupt:
             # Count partial results before exiting
