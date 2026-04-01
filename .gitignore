@@ -1,0 +1,132 @@
+# IDE and cache
+.pytest_cache
+.vscode
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
+
+# User data
+Timeline.json
+timeline.json
+timeline-*.json
+tagger.log
+
+# Photo/Image formats (standard)
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.PNG
+*.gif
+*.GIF
+*.bmp
+*.BMP
+*.tiff
+*.TIFF
+*.tif
+*.TIF
+*.webp
+*.WEBP
+
+# Raw image formats (Adobe)
+*.dng
+*.DNG
+
+# Raw image formats (Sony)
+*.arw
+*.ARW
+*.srf
+*.SRF
+*.sr2
+*.SR2
+
+# Raw image formats (Canon)
+*.cr2
+*.CR2
+*.cr3
+*.CR3
+*.crw
+*.CRW
+
+# Raw image formats (Nikon)
+*.nef
+*.NEF
+*.nrw
+*.NRW
+
+# Raw image formats (Fujifilm)
+*.raf
+*.RAF
+
+# Raw image formats (Panasonic)
+*.rw2
+*.RW2
+*.rwl
+*.RWL
+
+# Raw image formats (Olympus)
+*.orf
+*.ORF
+
+# Raw image formats (Pentax)
+*.pef
+*.PEF
+*.ptx
+*.PTX
+
+# Raw image formats (Epson)
+*.erf
+*.ERF
+
+# Raw image formats (Samsung)
+*.srw
+*.SRW
+
+# Raw image formats (GoPro)
+*.gpr
+*.GPR
+
+# Raw image formats (Hasselblad)
+*.3fr
+*.3FR
+
+# Video formats
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.avi
+*.AVI
+*.mkv
+*.MKV
+*.flv
+*.FLV
+*.wmv
+*.WMV
+*.m4v
+*.M4V
+*.webm
+*.WEBM
+*.mts
+*.MTS
+*.m2ts
+*.M2TS
+*.ts
+*.TS
+
+# Media folders
+SLR Fotos
+/photos
+/videos
+/images
+/media
+/trip
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*_original.*
+*.log
