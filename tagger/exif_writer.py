@@ -232,7 +232,7 @@ def read_datetime(file_path: str | Path) -> datetime | None:
             cmd,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
         )
 
         if result.returncode != 0:
@@ -363,7 +363,7 @@ def write_location(
             cmd,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=60,
         )
 
         if result.returncode == 0:
