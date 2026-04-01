@@ -8,6 +8,7 @@ import pytest
 from tagger.exif_writer import (
     check_exiftool,
     read_datetime,
+    read_datetime_batch,
     write_location,
     ExifToolNotFoundError,
 )
@@ -163,3 +164,89 @@ class TestWriteLocation:
             # Note: exiftool may not create backup with the exact name we expect
             # but at least the original file should be modified
             assert test_copy.exists()
+
+
+class TestReadDatetimeBatch:
+    """Test read_datetime_batch() function."""
+
+    def test_batch_reads_multiple_files(self, tmp_path):
+        """Test reading timestamps from multiple files via batch."""
+        jpg_path = Path(__file__).parent / "fixtures" / "sample.jpg"
+
+        if not jpg_path.exists():
+            pytest.skip("sample.jpg fixture not created")
+
+        try:
+            check_exiftool()
+        except ExifToolNotFoundError:
+            pytest.skip("exiftool not installed")
+
+        # Create multiple copies to test batch reading
+        test_files = []
+        for i in range(3):
+            test_copy = tmp_path / f"test_{i}.jpg"
+            test_copy.write_bytes(jpg_path.read_bytes())
+            test_files.append(test_copy)
+
+        # Read all timestamps at once
+        result_map = read_datetime_batch(test_files)
+
+        # Should have entries for all files
+        assert len(result_map) == 3
+        for test_file in test_files:
+            assert test_file in result_map
+            # All should have the same timestamp since they're copies
+            assert isinstance(result_map[test_file], datetime)
+            assert result_map[test_file].year == 2025
+
+    def test_batch_handles_missing_timestamp(self, tmp_path):
+        """Test batch reading with files that have no timestamp."""
+        try:
+            check_exiftool()
+        except ExifToolNotFoundError:
+            pytest.skip("exiftool not installed")
+
+        # Create a file with no EXIF data
+        test_file = tmp_path / "no_exif.jpg"
+        test_file.write_bytes(b"fake jpg data")
+
+        result_map = read_datetime_batch([test_file])
+
+        # Should have entry for the file, but with None value
+        assert test_file in result_map
+        assert result_map[test_file] is None
+
+    def test_batch_empty_list(self):
+        """Test batch reading with empty file list."""
+        result_map = read_datetime_batch([])
+        assert result_map == {}
+
+    def test_batch_chunks_large_lists(self, tmp_path):
+        """Test that batch chunking works correctly with small chunk size."""
+        jpg_path = Path(__file__).parent / "fixtures" / "sample.jpg"
+
+        if not jpg_path.exists():
+            pytest.skip("sample.jpg fixture not created")
+
+        try:
+            check_exiftool()
+        except ExifToolNotFoundError:
+            pytest.skip("exiftool not installed")
+
+        # Create more files than default chunk size
+        test_files = []
+        for i in range(5):
+            test_copy = tmp_path / f"test_{i}.jpg"
+            test_copy.write_bytes(jpg_path.read_bytes())
+            test_files.append(test_copy)
+
+        # Read with small chunk_size to force multiple subprocess calls
+        result_map = read_datetime_batch(test_files, chunk_size=2)
+
+        # Should successfully read all files despite chunking
+        assert len(result_map) == 5
+        for test_file in test_files:
+            assert test_file in result_map
+            # All should have valid timestamps
+            if result_map[test_file] is not None:
+                assert isinstance(result_map[test_file], datetime)

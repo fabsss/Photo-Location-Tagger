@@ -4,11 +4,12 @@
 import argparse
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from tagger.timeline_parser import load_timeline, TimelineParseError
 from tagger.location_finder import find_closest
-from tagger.exif_writer import check_exiftool, read_datetime, write_location, ExifToolNotFoundError
+from tagger.exif_writer import check_exiftool, read_datetime, read_datetime_batch, write_location, ExifToolNotFoundError
 
 
 # Setup logging
@@ -51,6 +52,7 @@ def process_directory(
     backup: bool,
     recursive: bool,
     extensions: list[str],
+    workers: int = 4,
 ) -> tuple[int, int, int]:
     """Process all matching files in a directory.
 
@@ -62,6 +64,7 @@ def process_directory(
         backup: Keep _original backups if True
         recursive: Process subdirectories if True
         extensions: File extensions to process (lowercase, without dot)
+        workers: Number of parallel workers (default 4). If 1, uses sequential mode.
 
     Returns:
         (tagged_count, skipped_count, failed_count)
@@ -70,14 +73,18 @@ def process_directory(
     skipped = 0
     failed = 0
 
-    # Find all matching files
+    # Find all matching files with improved glob for case-sensitive OSes
     pattern = "**/*" if recursive else "*"
     files_to_process = []
+    seen = set()
 
     for ext in extensions:
-        for file_path in input_dir.glob(f"{pattern}"):
-            if file_path.is_file() and file_path.suffix.lower().lstrip(".") == ext:
-                files_to_process.append(file_path)
+        # Glob both lowercase and uppercase variants (for Linux case-sensitive filesystems)
+        for variant in (ext.lower(), ext.upper()):
+            for file_path in input_dir.glob(f"{pattern}.{variant}"):
+                if file_path.is_file() and file_path not in seen:
+                    seen.add(file_path)
+                    files_to_process.append(file_path)
 
     if not files_to_process:
         logger.warning(f"No matching files found in {input_dir}")
@@ -85,27 +92,57 @@ def process_directory(
 
     logger.info(f"Found {len(files_to_process)} file(s) to process")
 
-    for file_path in sorted(files_to_process):
-        # Read image timestamp
-        image_dt = read_datetime(file_path)
-        if image_dt is None:
-            logger.warning(f"{file_path.name}: No readable timestamp found")
-            skipped += 1
-            continue
+    # Phase 1: Batch read all timestamps
+    files_to_process_sorted = sorted(files_to_process)
+    datetime_map = read_datetime_batch(files_to_process_sorted)
 
-        # Find closest GPS point
-        point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
-        if point is None:
-            logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
-            skipped += 1
-            continue
+    # Phase 2: Process files (parallel or sequential)
+    if workers > 1:
+        # Parallel execution with ThreadPoolExecutor
+        def _process_one(file_path):
+            image_dt = datetime_map.get(file_path)
+            if image_dt is None:
+                logger.warning(f"{file_path.name}: No readable timestamp found")
+                return "skipped"
 
-        # Write location
-        success = write_location(file_path, point, backup=backup, dry_run=dry_run)
-        if success:
-            tagged += 1
-        else:
-            failed += 1
+            point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
+            if point is None:
+                logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
+                return "skipped"
+
+            success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+            return "tagged" if success else "failed"
+
+        results = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_process_one, fp): fp for fp in files_to_process_sorted}
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        tagged = results.count("tagged")
+        skipped = results.count("skipped")
+        failed = results.count("failed")
+
+    else:
+        # Sequential execution (identical to original behavior)
+        for file_path in files_to_process_sorted:
+            image_dt = datetime_map.get(file_path)
+            if image_dt is None:
+                logger.warning(f"{file_path.name}: No readable timestamp found")
+                skipped += 1
+                continue
+
+            point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
+            if point is None:
+                logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
+                skipped += 1
+                continue
+
+            success = write_location(file_path, point, backup=backup, dry_run=dry_run)
+            if success:
+                tagged += 1
+            else:
+                failed += 1
 
     return tagged, skipped, failed
 
@@ -228,6 +265,21 @@ def prompt_for_interactive_mode() -> dict:
 
     verbose = input("Enable verbose logging? (y/n, default: n): ").strip().lower() == "y"
 
+    # Workers for parallel processing
+    while True:
+        workers_str = input("Number of parallel workers (default: 4, use 1 for sequential): ").strip()
+        if not workers_str:
+            workers = 4
+            break
+        try:
+            workers = int(workers_str)
+            if workers < 1:
+                print("Error: Must be at least 1")
+                continue
+            break
+        except ValueError:
+            print("Error: Must be a number")
+
     print("\n" + "="*60 + "\n")
 
     return {
@@ -240,6 +292,7 @@ def prompt_for_interactive_mode() -> dict:
         "dry_run": dry_run,
         "log_file": log_file,
         "verbose": verbose,
+        "workers": workers,
     }
 
 
@@ -317,6 +370,12 @@ Examples:
         action="store_true",
         help="Enable verbose logging (DEBUG level)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers for processing (default: 4). Use 1 for sequential processing.",
+    )
 
     args = parser.parse_args()
 
@@ -335,6 +394,7 @@ Examples:
             args.dry_run = config["dry_run"]
             args.log_file = config["log_file"]
             args.verbose = config["verbose"]
+            args.workers = config["workers"]
         except KeyboardInterrupt:
             print("\nCancelled by user")
             return 1
@@ -386,6 +446,7 @@ Examples:
                 backup=args.backup,
                 recursive=args.recursive,
                 extensions=extensions,
+                workers=args.workers,
             )
 
             logger.info("=" * 60)

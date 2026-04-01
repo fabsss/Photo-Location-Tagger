@@ -1,5 +1,6 @@
 """Read and write EXIF/metadata to images and videos via exiftool subprocess."""
 
+import json
 import logging
 import subprocess
 from datetime import datetime
@@ -46,6 +47,132 @@ def check_exiftool() -> bool:
         "  macOS (homebrew): brew install exiftool\n"
         "  Linux: sudo apt-get install libimage-exiftool-perl"
     )
+
+
+def read_datetime_batch(
+    file_paths: list[Path],
+    chunk_size: int = 200,
+) -> dict[Path, datetime | None]:
+    """Read image/video creation timestamps from multiple files via batch exiftool.
+
+    Splits file_paths into chunks to stay under Windows command-line length limit (~32,767 chars).
+    Per chunk: runs `exiftool -json -DateTimeOriginal -CreateDate -f file1 file2 ...`
+    Parses JSON response and extracts DateTimeOriginal/CreateDate for each file.
+
+    Args:
+        file_paths: List of Path objects to read timestamps from
+        chunk_size: Max files per exiftool invocation (default 200)
+
+    Returns:
+        dict[Path, datetime | None] — timestamp for each file (None if not found/error)
+
+    Example:
+        paths = [Path("photo1.jpg"), Path("photo2.jpg")]
+        timestamps = read_datetime_batch(paths)
+        for path, dt in timestamps.items():
+            print(f"{path.name}: {dt}")
+    """
+    result_map = {}
+
+    if not file_paths:
+        return result_map
+
+    # Split into chunks by count first
+    chunks = []
+    for i in range(0, len(file_paths), chunk_size):
+        chunks.append(file_paths[i : i + chunk_size])
+
+    # For chunks with very long paths, sub-chunk by character count
+    final_chunks = []
+    for chunk in chunks:
+        accumulated_length = 0
+        sub_chunk = []
+        for file_path in chunk:
+            file_str = str(file_path)
+            accumulated_length += len(file_str) + 1  # +1 for space between args
+            if accumulated_length > 30000:  # Conservative limit (Windows is ~32,767)
+                if sub_chunk:
+                    final_chunks.append(sub_chunk)
+                sub_chunk = [file_path]
+                accumulated_length = len(file_str) + 1
+            else:
+                sub_chunk.append(file_path)
+        if sub_chunk:
+            final_chunks.append(sub_chunk)
+
+    # Process each chunk
+    for chunk in final_chunks:
+        try:
+            cmd = ["exiftool", "-json", "-DateTimeOriginal", "-CreateDate", "-f"]
+            cmd.extend(str(fp) for fp in chunk)
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode != 0:
+                logger.warning(f"exiftool batch read failed: {result.stderr}")
+                # Mark all files in chunk as failed
+                for fp in chunk:
+                    result_map[fp] = None
+                continue
+
+            # Parse JSON array
+            try:
+                json_data = json.loads(result.stdout)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse exiftool JSON output: {e}")
+                for fp in chunk:
+                    result_map[fp] = None
+                continue
+
+            if not isinstance(json_data, list):
+                json_data = [json_data]
+
+            # Map results by SourceFile path
+            for entry in json_data:
+                if not isinstance(entry, dict):
+                    continue
+
+                try:
+                    source_file = entry.get("SourceFile")
+                    if not source_file:
+                        continue
+
+                    source_path = Path(source_file)
+
+                    # Try DateTimeOriginal first, then CreateDate
+                    datetime_str = entry.get("DateTimeOriginal") or entry.get("CreateDate")
+
+                    if not datetime_str:
+                        result_map[source_path] = None
+                        continue
+
+                    # Convert exiftool format "YYYY:MM:DD HH:MM:SS" to ISO
+                    exif_datetime_str = datetime_str.replace(":", "-", 2)
+                    try:
+                        result_map[source_path] = datetime.fromisoformat(exif_datetime_str)
+                    except ValueError:
+                        logger.debug(f"Could not parse datetime for {source_file}: {datetime_str}")
+                        result_map[source_path] = None
+
+                except (KeyError, TypeError) as e:
+                    logger.debug(f"Error processing JSON entry: {e}")
+                    continue
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"exiftool batch read timed out for chunk of {len(chunk)} files")
+            for fp in chunk:
+                result_map[fp] = None
+        except Exception as e:
+            logger.error(f"Unexpected error in batch read: {e}")
+            for fp in chunk:
+                result_map[fp] = None
+
+    return result_map
 
 
 def read_datetime(file_path: str | Path) -> datetime | None:
@@ -214,8 +341,14 @@ def write_location(
             )
             return True
         else:
-            logger.error(f"exiftool write failed for {file_path.name}: {result.stderr}")
-            return False
+            # Check if error is only a minor warning (e.g., maker notes parsing)
+            # exiftool still writes the metadata even with minor warnings
+            if "[minor]" in result.stderr:
+                logger.warning(f"⚠ {file_path.name}: {point.lat:.4f}, {point.lon:.4f} ({point.tz_offset_str}) — {result.stderr.strip()}")
+                return True
+            else:
+                logger.error(f"exiftool write failed for {file_path.name}: {result.stderr}")
+                return False
 
     except subprocess.TimeoutExpired:
         logger.error(f"exiftool timed out writing {file_path.name}")

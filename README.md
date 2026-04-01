@@ -183,6 +183,23 @@ The tool handles this intelligently:
 
 **Result**: Photos get tagged with correct timezone even if your timeline.json has missing or conflicting timezone data.
 
+### Known Limitation: Multi-timezone Travel
+
+When traveling across multiple time zones, there is a potential edge case where photos cannot be uniquely matched to GPS points:
+
+- **The issue**: `local_time` (the naive datetime used for matching) is not globally unique across timezone boundaries.
+  - Example: a photo taken in Melbourne at 08:00 AM (UTC+11) and a photo taken in London at 08:00 AM (UTC+0) on the same day produce identical `local_time` values (2024-03-15 08:00:00).
+  - The binary search algorithm cannot distinguish between these two different moments in absolute time.
+
+- **When it matters**: If you travel across time zones and take photos in both zones on the same calendar date, some photos might be matched to GPS points from the wrong timezone leg.
+
+- **Workaround**: Process photos from each timezone leg separately:
+  1. Export one leg at a time (e.g., all Melbourne photos, then all London photos)
+  2. Use separate timeline.json exports if available
+  3. Or accept the small risk if the trip is short and timezone changes are minor
+
+- **When it works fine**: Single-timezone trips, or when all photos and GPS points fall within the same timezone window.
+
 ## Testing
 
 ```bash

@@ -115,29 +115,26 @@ def _parse_semantic_segments(data: dict) -> list[GPSPoint]:
                 lat = float(coords[0])
                 lon = float(coords[1])
 
-                # Parse timestamp
+                # Parse timestamp (cache to avoid parsing three times)
                 time_str = path_point.get("time")
                 if not time_str:
                     continue
 
-                utc_dt = dateutil_parser.isoparse(time_str)
-                if utc_dt.tzinfo is None:
-                    utc_dt = utc_dt.replace(tzinfo=timezone.utc)
-                else:
-                    utc_dt = utc_dt.astimezone(timezone.utc)
+                parsed_time = dateutil_parser.isoparse(time_str)
+                utc_dt = parsed_time.astimezone(timezone.utc)
 
                 # Apply correct timezone offset
                 # ALWAYS use segment_offset_minutes if available (it's more reliable than embedded timezone)
                 if segment_offset_minutes is not None:
                     local_dt = apply_timezone_offset(utc_dt, segment_offset_minutes)
                     tz_offset_str = _format_offset_string(segment_offset_minutes)
-                    tz_offset_minutes = segment_offset_minutes
+                    tz_offset_minutes_final = segment_offset_minutes
                 else:
                     # Fall back to offset from the time string itself only if segment offset missing
-                    local_dt = dateutil_parser.isoparse(time_str)
+                    local_dt = parsed_time
                     if local_dt.tzinfo is not None:
-                        tz_offset_minutes = int(local_dt.utcoffset().total_seconds() // 60)
-                        tz_offset_str = _format_offset_string(tz_offset_minutes)
+                        tz_offset_minutes_final = int(local_dt.utcoffset().total_seconds() // 60)
+                        tz_offset_str = _format_offset_string(tz_offset_minutes_final)
                         local_dt = local_dt.replace(tzinfo=None)
                     else:
                         continue
@@ -148,9 +145,7 @@ def _parse_semantic_segments(data: dict) -> list[GPSPoint]:
                         local_time=local_dt.replace(tzinfo=None),
                         lat=lat,
                         lon=lon,
-                        tz_offset_minutes=segment_offset_minutes or int(
-                            dateutil_parser.isoparse(time_str).utcoffset().total_seconds() // 60
-                        ),
+                        tz_offset_minutes=tz_offset_minutes_final,
                         tz_offset_str=tz_offset_str,
                     )
                 )
