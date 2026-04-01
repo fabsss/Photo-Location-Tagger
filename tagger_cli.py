@@ -138,7 +138,7 @@ def process_directory(
 
             point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
             if point is None:
-                logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
+                # find_closest already logs the detailed message with actual time delta
                 return "skipped"
 
             success = write_location(file_path, point, backup=backup, dry_run=dry_run)
@@ -181,7 +181,7 @@ def process_directory(
 
                 point = find_closest(image_dt, timeline_points, max_delta_minutes=time_margin)
                 if point is None:
-                    logger.warning(f"{file_path.name}: No GPS match within {time_margin} min")
+                    # find_closest already logs the detailed message with actual time delta
                     skipped += 1
                     continue
 
