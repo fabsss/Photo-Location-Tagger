@@ -137,6 +137,8 @@ SLR Fotos
 *.bak
 *_original.*
 *.log
+*_tmp
+*_exiftool_tmp
 
 # Log files
 *.log.*
