@@ -92,6 +92,13 @@ tagger.log
 *.3fr
 *.3FR
 
+# Original files
+*_original.*
+*_ORIGINAL.*
+*_original
+*_ORIGINAL
+
+
 # Video formats
 *.mp4
 *.MP4
