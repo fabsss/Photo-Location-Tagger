@@ -313,6 +313,48 @@ Gracefully handles: missing files, malformed JSON, missing timestamps, no GPS ma
 
 See log output with --log-file for detailed debugging.
 
+## Troubleshooting
+
+### "exiftool timed out writing" on large video files
+**Cause**: Large 4K video files can take longer than the default timeout to process.
+
+**Solution**: The tool now uses:
+- 60-second timeout for writes (suitable for 4K video files)
+- 30-second timeout for reads
+- These are set automatically; no configuration needed
+
+If you encounter timeouts on extremely large files (>5GB), the timeouts can be increased by modifying `tagger/exif_writer.py` and raising the `timeout=60` values.
+
+### "Temporary file already exists" error
+**Cause**: If exiftool is interrupted or crashes during writing, it leaves a temporary file (`<filename>_exiftool_tmp`) that blocks future writes to the same file.
+
+**Solution**: The tool automatically cleans up stale temporary files before attempting writes. If you manually need to clean them:
+```bash
+# Remove all stale exiftool temp files in a directory
+find . -name "*_exiftool_tmp" -delete
+```
+
+### DNG files not being geotagged
+**Cause**: DNG (raw) files from some cameras show maker note parsing warnings, which exiftool previously treated as fatal errors.
+
+**Solution**: The tool now uses the `-api ignoreMinorErrors=1` flag, which:
+- Treats maker note warnings as non-fatal
+- Still writes GPS coordinates and timezone data successfully
+- Matches behavior of ExiftoolGUI and other professional tools
+
+DNG files should now geotag successfully alongside JPGs.
+
+### Video files showing "No readable timestamp found"
+**Cause**: MP4/MOV video files use QuickTime tags instead of EXIF tags for metadata, which older code didn't support.
+
+**Solution**: The tool now:
+- Detects video files (.mp4, .mov, .m4v) automatically
+- Reads QuickTime tags (CreateDate, MediaCreateDate) for videos
+- Falls back to EXIF tags for image files
+- Works seamlessly in both single-file and batch mode
+
+Video timestamps should now be found and processed normally.
+
 ## License
 
 MIT
