@@ -4,6 +4,7 @@ A Python CLI tool to geotag photos and videos using Google Location History time
 
 ## Features
 
+### Geotagging (tagger_cli.py)
 - Smart timezone handling without timezone guessing
 - Multiple timeline format support (semanticSegments, legacy, timelineObjects)
 - **Comprehensive format support**: JPG, PNG, TIFF, WebP, RAW files from all major camera brands, and videos
@@ -11,6 +12,13 @@ A Python CLI tool to geotag photos and videos using Google Location History time
 - Dry-run mode to preview changes before committing
 - Interactive mode for easy configuration
 - Detailed logging (INFO and DEBUG)
+
+### Time Shift Utility (shift_time_cli.py)
+- Adjust photo/video timestamps by specified amounts
+- Useful for drone photos with wrong timezone or device clock errors
+- Preview-and-confirm interactive mode
+- Parallel processing with configurable workers
+- Supports all image and video formats
 
 
 ## Installation
@@ -260,6 +268,100 @@ python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger
 python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger.log
 ```
 
+## Time Shift Tool (Utility)
+
+Adjust photo and video timestamps when they have the wrong time or timezone offset. Useful for drone photos where the camera was set to UTC instead of local time, or when the device clock was incorrect.
+
+### Interactive Mode
+
+Run with no arguments for guided setup:
+
+```bash
+python shift_time_cli.py
+```
+
+You'll be prompted to:
+1. Select a folder with photos/videos
+2. Preview the first file's current timestamp
+3. Enter a time shift amount (e.g., `+08:00:00`, `-00:30:00`)
+4. Confirm the shift direction before applying
+
+### Command-line Mode
+
+```bash
+# Shift all files in a folder by +8 hours
+python shift_time_cli.py --input ./drone_photos --shift +08:00:00
+
+# Shift by -30 minutes with backup
+python shift_time_cli.py --input ./photos --shift -00:30:00 --backup
+
+# Shift by 1 day 2 hours with parallel processing (4 workers)
+python shift_time_cli.py --input ./photos --shift +1:02:00:00 --workers 4
+
+# Preview without making changes (dry-run)
+python shift_time_cli.py --input ./photos --shift +08:00:00 --dry-run
+
+# Save detailed log to file
+python shift_time_cli.py --input ./photos --shift +08:00:00 --log-file shift.log --verbose
+```
+
+### Shift Format
+
+Time shift amount: `[+|-][DD:]HH:MM:SS`
+
+Examples:
+- `+08:00:00` — shift forward by 8 hours
+- `-00:30:00` — shift backward by 30 minutes
+- `+1:12:00:00` — shift forward by 1 day and 12 hours (use `+1:12:00:00` format)
+- `+01:02:03` — shift forward by 1 hour, 2 minutes, 3 seconds
+
+**Note**: For negative shifts in command-line mode, use `--shift=-00:30:00` (with equals) to avoid argparse treating it as a flag.
+
+### Options
+
+- `--input PATH`: Folder with photos/videos (interactive mode if omitted)
+- `--shift SHIFT`: Time shift: `[+|-][DD:]HH:MM:SS` (interactive mode if omitted)
+- `--dry-run`: Show what would be changed without writing
+- `--backup`: Keep `_original` backup files (default: overwrite)
+- `--recursive`: Process subfolders recursively
+- `--extensions EXT`: Comma-separated extensions (default: all supported formats)
+- `--log-file FILE`: Write detailed log to file
+- `--verbose` / `-v`: Enable DEBUG level logging
+- `--workers N`: Number of parallel workers (default: 4). Use 1 for sequential.
+- `--timeout N`: exiftool subprocess timeout in seconds (default: 60)
+
+### Supported Formats
+
+Same as tagger_cli.py: JPG, PNG, TIFF, WebP, DNG, RAW files from all major camera brands (Sony, Canon, Nikon, Fujifilm, Panasonic, Olympus, Pentax, Epson, Samsung, GoPro, Hasselblad), and MP4/MOV videos.
+
+### How It Works
+
+- Reads DateTimeOriginal and CreateDate from images (EXIF tags)
+- Reads CreateDate and MediaCreateDate from videos (QuickTime tags)
+- Applies the specified time shift to all timestamps
+- Handles both EXIF and raw formats with the same `-api ignoreMinorErrors=1` flag
+- Preserves file creation time, only shifts timestamp metadata
+
+### Use Cases
+
+**Drone camera with wrong timezone:**
+```bash
+# Drone was set to UTC, local timezone is UTC+8
+python shift_time_cli.py --input ./drone_photos --shift +08:00:00
+```
+
+**Camera clock was slow:**
+```bash
+# Camera was 2 hours behind
+python shift_time_cli.py --input ./photos --shift +02:00:00 --backup
+```
+
+**Device adjusted for daylight saving time:**
+```bash
+# Clock needs to go back 1 hour
+python shift_time_cli.py --input ./photos --shift -01:00:00 --dry-run
+```
+
 ## How It Works
 
 Compares naive local times directly - no timezone guessing required.
@@ -314,8 +416,10 @@ Photo-Location-Tagger/
 │   ├── utils.py              # Coordinate normalization, timezone utilities
 │   ├── timeline_parser.py    # Parse timeline.json to list of GPSPoint
 │   ├── location_finder.py    # Binary-search closest GPSPoint
-│   └── exif_writer.py        # Write GPS and OffsetTimeOriginal
-├── tagger_cli.py             # CLI entry point
+│   ├── exif_writer.py        # Write GPS and OffsetTimeOriginal
+│   └── time_shifter.py       # Shift datetime by offset amount
+├── tagger_cli.py             # Geotagging CLI entry point
+├── shift_time_cli.py         # Time shift utility CLI entry point
 ├── tests/
 │   ├── conftest.py           # Pytest fixtures
 │   ├── fixtures/
