@@ -14,7 +14,6 @@ Python CLI tools for geotagging photos/videos with Google Location History and a
 - Dry-run mode to preview changes before committing
 - Interactive and command-line modes
 - Detailed logging with auto-incrementing log files
-- Graceful Ctrl+C shutdown with timeout-bounded waiting
 
 ### Time Shift Utility (shift_time_cli.py)
 - **Adjust timestamps** by specified amounts: `+08:00:00`, `-00:30:00`, `+1:12:00:00`, etc.
@@ -498,30 +497,6 @@ Or run interactively (no parameters needed):
 ```bash
 python tagger_cli.py
 ```
-
-## Error Handling
-
-Gracefully handles: missing files, malformed JSON, missing timestamps, no GPS matches, exiftool errors, permission issues.
-
-See log output with --log-file for detailed debugging.
-
-## Graceful Shutdown
-
-Press **Ctrl+C** once to stop processing cleanly:
-- The tool waits for currently running exiftool processes to finish
-- No files are interrupted mid-write (prevents corruption)
-- Partial results are reported before exit
-- No Python errors, exiftool interruptions, or stack traces
-- Works with both parallel and sequential processing
-
-```bash
-# Example: Press Ctrl+C during processing
-^C
-[WARNING] Processing interrupted by user. Waiting for running tasks to complete...
-SUMMARY: 47 tagged, 12 skipped, 0 failed
-```
-
-Even with large files and parallel processing, a single Ctrl+C will gracefully shutdown after completing currently running operations.
 
 ## Troubleshooting
 
