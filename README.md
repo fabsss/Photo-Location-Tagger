@@ -1,25 +1,42 @@
-# Photo-Location-Tagger
+# Photo Location Tagging and Time Shifting Tools
 
-A Python CLI tool to geotag photos and videos using Google Location History timeline data.
+Python CLI tools for geotagging photos/videos with Google Location History and adjusting photo timestamps by time offset.
 
 ## Features
 
 ### Geotagging (tagger_cli.py)
-- Smart timezone handling without timezone guessing
-- Multiple timeline format support (semanticSegments, legacy, timelineObjects)
-- **Comprehensive format support**: JPG, PNG, TIFF, WebP, RAW files from all major camera brands, and videos
-- Backup mode keeps original files
+- **Smart timezone handling** without timezone guessing
+- **Multiple timeline formats**: semanticSegments, legacy, timelineObjects
+- **Comprehensive format support**: JPG, PNG, TIFF, WebP, DNG, RAW from all major camera brands, MP4/MOV videos
+- Batch exiftool reads (reduce 500 subprocess calls to just 3) — ~10x faster
+- Parallel processing with configurable workers (default: 4)
+- Backup mode keeps `_original` files
 - Dry-run mode to preview changes before committing
-- Interactive mode for easy configuration
-- Detailed logging (INFO and DEBUG)
+- Interactive and command-line modes
+- Detailed logging with auto-incrementing log files
+- Graceful Ctrl+C shutdown with timeout-bounded waiting
 
 ### Time Shift Utility (shift_time_cli.py)
-- Adjust photo/video timestamps by specified amounts
-- Useful for drone photos with wrong timezone or device clock errors
-- Preview-and-confirm interactive mode
-- Parallel processing with configurable workers
-- Supports all image and video formats
+- **Adjust timestamps** by specified amounts: `+08:00:00`, `-00:30:00`, `+1:12:00:00`, etc.
+- **Preview-and-confirm** interactive mode — shows first file's time before/after shift
+- **Parallel processing** with configurable workers (default: 4)
+- **All formats supported**: same as geotagging tool (JPG, DNG, RAW, MP4/MOV, etc.)
+- Works with drone photos that have wrong timezone (UTC vs local time)
+- Device clock correction (camera clock was slow/fast)
+- Batch or single-file processing
+- Dry-run mode to preview changes
+- Interactive and command-line modes
 
+
+## Which Tool Do I Need?
+
+| Problem | Tool | Example |
+|---------|------|---------|
+| Photos have no location/GPS data | **Geotagging** (`tagger_cli.py`) | Photos from trip, need to add GPS from Google Timeline |
+| Photos have wrong timestamp/timezone | **Time Shift** (`shift_time_cli.py`) | Drone recorded in UTC, need local time; or camera clock was wrong |
+| Both problems | Use **both tools** in sequence | First shift timestamps to correct time, then geotag with GPS |
+
+---
 
 ## Installation
 
@@ -39,9 +56,25 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Interactive Mode (Recommended)
+### Quick Start — Two Tools
 
-Simply run the script with no arguments for guided prompts:
+**For geotagging photos with GPS locations:**
+```bash
+python tagger_cli.py                           # Interactive mode (guided)
+python tagger_cli.py --timeline timeline.json --input ./photos  # Command-line mode
+```
+
+**For adjusting photo timestamps:**
+```bash
+python shift_time_cli.py                       # Interactive mode (preview + confirm)
+python shift_time_cli.py --input ./photos --shift +08:00:00      # Command-line mode
+```
+
+---
+
+### Geotagging Tool: Interactive Mode (Recommended)
+
+Simply run with no arguments for guided prompts:
 
 ```bash
 python tagger_cli.py
@@ -61,7 +94,7 @@ You'll be prompted to:
 - Use `.\subfolder` (Windows) or `./subfolder` (macOS/Linux) for subdirectories
 - Use absolute paths like `C:\Users\name\Photos` or `/Users/name/Photos` when needed
 
-### Command-line Mode
+### Geotagging Tool: Command-line Mode
 
 For scripting or automation:
 
@@ -75,7 +108,7 @@ python tagger_cli.py --timeline timeline.json --input ./trip --recursive --time-
 # Process with 8 parallel workers (faster on multi-core systems)
 python tagger_cli.py --timeline timeline.json --input ./photos --workers 8
 
-# Sequential processing (original behavior, use if parallel causes issues)
+# Sequential processing (use if parallel causes issues)
 python tagger_cli.py --timeline timeline.json --input ./photos --workers 1
 
 # Preview without making changes (dry-run)
@@ -268,25 +301,33 @@ python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger
 python tagger_cli.py --timeline timeline.json --input ./photos --log-file tagger.log
 ```
 
-## Time Shift Tool (Utility)
+## Time Shift Tool
 
-Adjust photo and video timestamps when they have the wrong time or timezone offset. Useful for drone photos where the camera was set to UTC instead of local time, or when the device clock was incorrect.
+Adjust photo and video timestamps when they have the wrong time or timezone offset. Common use cases:
+- Drone photos recorded in UTC but need local time
+- Camera clock was set incorrectly (slow or fast)
+- Device clock didn't adjust for daylight saving time
+- DNG files with timezone issues (same `-api ignoreMinorErrors=1` fix as geotagging tool)
 
-### Interactive Mode
+### Time Shift Tool: Interactive Mode (Recommended)
 
-Run with no arguments for guided setup:
+Run with no arguments for guided setup with live preview:
 
 ```bash
 python shift_time_cli.py
 ```
 
-You'll be prompted to:
+**What happens:**
 1. Select a folder with photos/videos
-2. Preview the first file's current timestamp
-3. Enter a time shift amount (e.g., `+08:00:00`, `-00:30:00`)
-4. Confirm the shift direction before applying
+2. Tool reads and displays the **first file's current timestamp**
+3. You enter a time shift amount (e.g., `+08:00:00`, `-00:30:00`)
+4. Tool shows the **preview**: original time → new time after shift
+5. **Confirm the direction and magnitude** before applying to all files
+6. Optionally configure other options (dry-run, backup, workers, logging)
 
-### Command-line Mode
+This interactive preview prevents mistakes — you can see exactly what the shift will do before committing!
+
+### Time Shift Tool: Command-line Mode
 
 ```bash
 # Shift all files in a folder by +8 hours
@@ -362,13 +403,13 @@ python shift_time_cli.py --input ./photos --shift +02:00:00 --backup
 python shift_time_cli.py --input ./photos --shift -01:00:00 --dry-run
 ```
 
-## How It Works
+## How Geotagging Works
 
 Compares naive local times directly - no timezone guessing required.
 
 The GPS point provides UTC time plus timezone offset, which we convert to local time. The image EXIF provides naive local time. These match directly without timezone conversion ambiguity.
 
-### Timezone Handling
+### Geotagging: Timezone Handling
 
 Google's Timeline export can be **inconsistent** with timezone data:
 
@@ -383,7 +424,7 @@ The tool handles this intelligently:
 
 **Result**: Photos get tagged with correct timezone even if your timeline.json has missing or conflicting timezone data.
 
-### Known Limitation: Multi-timezone Travel
+### Geotagging: Known Limitation — Multi-timezone Travel
 
 When traveling across multiple time zones, there is a potential edge case where photos cannot be uniquely matched to GPS points:
 
