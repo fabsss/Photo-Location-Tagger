@@ -354,8 +354,8 @@ def write_location(
 
     # Timezone offset (for MP4 videos)
     if file_path.suffix.lower() in [".mp4", ".mov"]:
-        # MP4 uses a different tag structure
-        cmd.append(f"-Keys:GPSCoordinates={point.lat},{point.lon}")
+        # MP4 uses a different tag structure, but coordinates must be absolute values (like GPSLatitude/GPSLongitude)
+        cmd.append(f"-Keys:GPSCoordinates={abs(point.lat)},{abs(point.lon)}")
 
     # Backup/overwrite mode
     if not backup:
