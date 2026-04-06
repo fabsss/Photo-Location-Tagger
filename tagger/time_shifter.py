@@ -146,10 +146,13 @@ def write_time_shift(
     cmd = ["exiftool", "-api", "ignoreMinorErrors=1"]
 
     if is_video:
-        # For videos: shift QuickTime tags
+        # For videos: shift QuickTime tags and XMP tags for Windows player compatibility
         cmd.extend([
             f"-QuickTime:CreateDate{operator}\"{shift_str}\"",
             f"-QuickTime:MediaCreateDate{operator}\"{shift_str}\"",
+            # Also shift XMP tags for Windows player compatibility
+            f"-XMP-exif:DateTimeOriginal{operator}\"{shift_str}\"",
+            f"-XMP:CreateDate{operator}\"{shift_str}\"",
         ])
     else:
         # For images and raw: shift EXIF tags

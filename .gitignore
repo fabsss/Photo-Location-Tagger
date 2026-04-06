@@ -142,3 +142,5 @@ SLR Fotos
 
 # Log files
 *.log.*
+
+/esphome_ble_mi_remote_patched

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://api.github.com/repos/shammysha/esphome-ble-mi-remote/contents/components\")",
+      "Bash(curl -s \"https://api.github.com/repos/shammysha/esphome-ble-mi-remote/contents/components/ble_mi_remote\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/shammysha/esphome-ble-mi-remote/main/components/ble_mi_remote/__init__.py\")"
+    ]
+  }
+}

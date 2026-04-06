@@ -308,15 +308,19 @@ def write_location(
     # Build exiftool command
     cmd = ["exiftool", "-api", "ignoreMinorErrors=1"]
 
-    # GPS coordinates
-    lat_ref = "N" if point.lat >= 0 else "S"
-    lon_ref = "E" if point.lon >= 0 else "W"
-    cmd.extend([
-        f"-GPSLatitude={abs(point.lat)}",
-        f"-GPSLongitude={abs(point.lon)}",
-        f"-GPSLatitudeRef={lat_ref}",
-        f"-GPSLongitudeRef={lon_ref}",
-    ])
+    # GPS coordinates - use standard tags for images, Keys:GPSCoordinates for videos
+    is_video = file_path.suffix.lower() in [".mp4", ".mov"]
+
+    if not is_video:
+        # For images: use standard GPS tags with direction references
+        lat_ref = "N" if point.lat >= 0 else "S"
+        lon_ref = "E" if point.lon >= 0 else "W"
+        cmd.extend([
+            f"-GPSLatitude={abs(point.lat)}",
+            f"-GPSLongitude={abs(point.lon)}",
+            f"-GPSLatitudeRef={lat_ref}",
+            f"-GPSLongitudeRef={lon_ref}",
+        ])
 
     # Timezone offset (for images and raw formats)
     # Includes: JPEG, PNG, TIFF, WebP, and raw formats from major camera brands
@@ -352,10 +356,33 @@ def write_location(
     if file_path.suffix.lower() in image_formats:
         cmd.append(f"-OffsetTimeOriginal={point.tz_offset_str}")
 
-    # Timezone offset (for MP4 videos)
-    if file_path.suffix.lower() in [".mp4", ".mov"]:
-        # MP4 uses a different tag structure, but coordinates must be absolute values (like GPSLatitude/GPSLongitude)
-        cmd.append(f"-Keys:GPSCoordinates={abs(point.lat)},{abs(point.lon)}")
+    # GPS tags for MP4 videos - write both QuickTime and XMP for maximum compatibility
+    if is_video:
+        lat_ref = "N" if point.lat >= 0 else "S"
+        lon_ref = "E" if point.lon >= 0 else "W"
+
+        # QuickTime Keys:GPSCoordinates (for Apple devices)
+        coords_str = f"{abs(point.lat)} {lat_ref}, {abs(point.lon)} {lon_ref}"
+        cmd.append(f"-Keys:GPSCoordinates={coords_str}")
+
+        # XMP-exif GPS tags (for Windows players) - use signed decimal degrees (negative = south/west)
+        cmd.extend([
+            f"-XMP-exif:GPSLatitude={point.lat}",
+            f"-XMP-exif:GPSLongitude={point.lon}",
+        ])
+
+        # Read video's original creation date and write to XMP for Windows player compatibility
+        try:
+            original_datetime = read_datetime(file_path)
+            if original_datetime:
+                # Write creation date to XMP tags
+                xmp_datetime = original_datetime.isoformat()
+                cmd.extend([
+                    f"-XMP-exif:DateTimeOriginal={xmp_datetime}",
+                    f"-XMP:CreateDate={xmp_datetime}",
+                ])
+        except Exception as e:
+            logger.warning(f"Could not read original datetime for XMP: {e}")
 
     # Backup/overwrite mode
     if not backup:
