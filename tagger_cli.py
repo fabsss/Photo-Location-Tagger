@@ -126,7 +126,9 @@ def process_directory(
 
     # Phase 1: Batch read all timestamps
     files_to_process_sorted = sorted(files_to_process)
+    logger.info("Reading timestamps...")
     datetime_map = read_datetime_batch(files_to_process_sorted)
+    logger.info("Timestamps read, matching GPS points...")
 
     # Phase 2: Process files (parallel or sequential)
     if workers > 1:
@@ -142,7 +144,7 @@ def process_directory(
                 # find_closest already logs the detailed message with actual time delta
                 return "skipped"
 
-            success = write_location(file_path, point, backup=backup, dry_run=dry_run, timeout=timeout)
+            success = write_location(file_path, point, backup=backup, dry_run=dry_run, timeout=timeout, file_datetime=image_dt)
             if success:
                 # Log time delta for successful match (positive = photo after GPS point, negative = before)
                 delta_seconds = (point.local_time - image_dt).total_seconds()

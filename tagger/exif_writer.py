@@ -179,13 +179,24 @@ def read_datetime_batch(
                         result_map[source_path] = None
                         continue
 
-                    # Convert exiftool format "YYYY:MM:DD HH:MM:SS" to ISO
-                    exif_datetime_str = datetime_str.replace(":", "-", 2)
+                    # Parse datetime string — two possible formats:
+                    # 1. ISO format from XMP tags: "2025-12-20T09:35:17" or "2025-12-20T09:35:17+11:00"
+                    # 2. exiftool native format from QuickTime/EXIF: "2025:12:20 09:35:17"
+                    parsed_dt = None
                     try:
-                        result_map[source_path] = datetime.fromisoformat(exif_datetime_str)
+                        # Try ISO format first (XMP tags use this)
+                        parsed_dt = datetime.fromisoformat(datetime_str)
                     except ValueError:
-                        logger.debug(f"Could not parse datetime for {source_file}: {datetime_str}")
-                        result_map[source_path] = None
+                        # Fall back to exiftool format: replace first two colons to get ISO date
+                        exif_datetime_str = datetime_str.replace(":", "-", 2)
+                        try:
+                            parsed_dt = datetime.fromisoformat(exif_datetime_str)
+                        except ValueError:
+                            logger.debug(f"Could not parse datetime for {source_file}: {datetime_str}")
+                    # Strip timezone if present — GPS matching works in naive local time
+                    if parsed_dt and parsed_dt.tzinfo is not None:
+                        parsed_dt = parsed_dt.replace(tzinfo=None)
+                    result_map[source_path] = parsed_dt
 
                 except (KeyError, TypeError) as e:
                     logger.debug(f"Error processing JSON entry: {e}")
@@ -254,17 +265,25 @@ def read_datetime(file_path: str | Path) -> datetime | None:
             logger.warning(f"exiftool read failed for {file_path.name}: {result.stderr}")
             return None
 
-        # Output format: "YYYY:MM:DD HH:MM:SS" or "-" if tag not present
+        # Output format: "YYYY:MM:DD HH:MM:SS" (QuickTime/EXIF) or ISO (XMP) or "-" if absent
         lines = result.stdout.strip().split("\n")
         for line in lines:
             if line and line != "-":
-                # Convert exiftool format "YYYY:MM:DD HH:MM:SS" to ISO "YYYY-MM-DD HH:MM:SS"
-                exif_datetime_str = line.replace(":", "-", 2)  # Replace first 2 colons
+                parsed_dt = None
                 try:
-                    return datetime.fromisoformat(exif_datetime_str)
+                    parsed_dt = datetime.fromisoformat(line)
                 except ValueError:
-                    logger.debug(f"Could not parse datetime: {line}")
-                    continue
+                    # Try exiftool native format "YYYY:MM:DD HH:MM:SS"
+                    exif_datetime_str = line.replace(":", "-", 2)
+                    try:
+                        parsed_dt = datetime.fromisoformat(exif_datetime_str)
+                    except ValueError:
+                        logger.debug(f"Could not parse datetime: {line}")
+                        continue
+                # Strip timezone if present — GPS matching works in naive local time
+                if parsed_dt and parsed_dt.tzinfo is not None:
+                    parsed_dt = parsed_dt.replace(tzinfo=None)
+                return parsed_dt
 
         tag_type = "QuickTime" if is_video else "EXIF"
         logger.warning(f"No {tag_type} timestamp found in {file_path.name}")
@@ -284,6 +303,7 @@ def write_location(
     backup: bool = False,
     dry_run: bool = False,
     timeout: int = 60,
+    file_datetime: datetime | None = None,
 ) -> bool:
     """Write GPS coordinates and timezone offset to image/video EXIF metadata.
 
@@ -386,28 +406,26 @@ def write_location(
             f"-XMP-exif:GPSLongitude={point.lon}",
         ])
 
-        # Read video's original creation date and write to XMP and Keys metadata
+        # Write creation date to XMP and Keys metadata for player/Immich compatibility.
+        # Use the already-read datetime if provided (avoids extra exiftool subprocess).
         try:
-            original_datetime = read_datetime(file_path)
+            original_datetime = file_datetime or read_datetime(file_path)
             if original_datetime:
-                # Write creation date to XMP tags (without timezone, for general compatibility)
+                # XMP tags for Windows player compatibility (no timezone)
                 xmp_datetime = original_datetime.isoformat()
                 cmd.extend([
                     f"-XMP-exif:DateTimeOriginal={xmp_datetime}",
                     f"-XMP:CreateDate={xmp_datetime}",
                 ])
 
-                # Write Keys:CreationDate with timezone info for Immich compatibility.
-                # Immich prioritises CreationDate (Keys:CreationDate, 4th) over CreateDate
-                # (QuickTime:CreateDate UTC, 5th). A tag with hasZone=true prevents Immich
-                # from applying GPS timezone on top, avoiding the double-shift problem.
-                # Skip if already set (e.g. Apple/iPhone devices write it correctly).
-                if not _read_single_tag(file_path, "Keys:CreationDate"):
-                    keys_datetime = (
-                        original_datetime.strftime("%Y:%m:%d %H:%M:%S")
-                        + point.tz_offset_str
-                    )
-                    cmd.append(f"-Keys:CreationDate={keys_datetime}")
+                # Keys:CreationDate with timezone for Immich compatibility.
+                # Immich prioritises this (rank 4, hasZone=true) over QuickTime:CreateDate
+                # (rank 5, naive UTC), preventing GPS timezone being applied a second time.
+                keys_datetime = (
+                    original_datetime.strftime("%Y:%m:%d %H:%M:%S")
+                    + point.tz_offset_str
+                )
+                cmd.append(f"-Keys:CreationDate={keys_datetime}")
         except Exception as e:
             logger.warning(f"Could not read original datetime for XMP: {e}")
 
