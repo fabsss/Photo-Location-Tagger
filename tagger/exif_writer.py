@@ -12,6 +12,21 @@ from .timeline_parser import GPSPoint
 logger = logging.getLogger(__name__)
 
 
+def _read_single_tag(file_path: Path, tag: str) -> str | None:
+    """Read a single exiftool tag value from a file. Returns None if absent or '-'."""
+    try:
+        result = subprocess.run(
+            ["exiftool", "-s3", f"-{tag}", str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        val = result.stdout.strip()
+        return val if val and val != "-" else None
+    except Exception:
+        return None
+
+
 class ExifToolNotFoundError(Exception):
     """Raised when exiftool is not installed or not on PATH."""
 
@@ -371,16 +386,28 @@ def write_location(
             f"-XMP-exif:GPSLongitude={point.lon}",
         ])
 
-        # Read video's original creation date and write to XMP for Windows player compatibility
+        # Read video's original creation date and write to XMP and Keys metadata
         try:
             original_datetime = read_datetime(file_path)
             if original_datetime:
-                # Write creation date to XMP tags
+                # Write creation date to XMP tags (without timezone, for general compatibility)
                 xmp_datetime = original_datetime.isoformat()
                 cmd.extend([
                     f"-XMP-exif:DateTimeOriginal={xmp_datetime}",
                     f"-XMP:CreateDate={xmp_datetime}",
                 ])
+
+                # Write Keys:CreationDate with timezone info for Immich compatibility.
+                # Immich prioritises CreationDate (Keys:CreationDate, 4th) over CreateDate
+                # (QuickTime:CreateDate UTC, 5th). A tag with hasZone=true prevents Immich
+                # from applying GPS timezone on top, avoiding the double-shift problem.
+                # Skip if already set (e.g. Apple/iPhone devices write it correctly).
+                if not _read_single_tag(file_path, "Keys:CreationDate"):
+                    keys_datetime = (
+                        original_datetime.strftime("%Y:%m:%d %H:%M:%S")
+                        + point.tz_offset_str
+                    )
+                    cmd.append(f"-Keys:CreationDate={keys_datetime}")
         except Exception as e:
             logger.warning(f"Could not read original datetime for XMP: {e}")
 
