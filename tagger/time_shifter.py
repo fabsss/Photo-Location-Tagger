@@ -8,6 +8,21 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _has_keys_creation_date(file_path: Path) -> bool:
+    """Return True if the file has a Keys:CreationDate tag set."""
+    try:
+        result = subprocess.run(
+            ["exiftool", "-s3", "-Keys:CreationDate", str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        val = result.stdout.strip()
+        return bool(val and val != "-")
+    except Exception:
+        return False
+
+
 class TimeShiftError(Exception):
     """Raised when time shift parsing or application fails."""
 
@@ -154,6 +169,12 @@ def write_time_shift(
             f"-XMP-exif:DateTimeOriginal{operator}\"{shift_str}\"",
             f"-XMP:CreateDate{operator}\"{shift_str}\"",
         ])
+        # Also shift Keys:CreationDate if present (written by location tagger or Apple devices).
+        # This timezone-aware field is prioritised by Immich (CreationDate, rank 4) over the
+        # naive QuickTime:CreateDate (rank 5). Keeping it in sync prevents the double-shift
+        # where Immich would otherwise re-apply GPS timezone on top of the shifted UTC value.
+        if _has_keys_creation_date(file_path):
+            cmd.append(f"-Keys:CreationDate{operator}\"{shift_str}\"")
     else:
         # For images and raw: shift EXIF tags
         cmd.extend([
